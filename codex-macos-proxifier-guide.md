@@ -6,6 +6,9 @@
 > 目标：用 Proxifier 做**按域名分流**，Codex 直接双击启动即可用。
 >
 > 验证环境：Proxifier 3.15 (macOS)，本地代理 SOCKS5 `127.0.0.1:1234`。2026-10 实测通过。
+>
+> **Windows 用户**：Proxifier 4.x 的 profile 格式、路径和验证命令都不同，
+> 请看 [`codex-windows-proxifier-guide.md`](codex-windows-proxifier-guide.md)。
 
 ---
 

@@ -1,22 +1,48 @@
-# Codex macOS × Proxifier 分流配置与自检工具
+# Codex × Proxifier 分流配置与自检工具（macOS / Windows）
 
-让 **Codex / ChatGPT 桌面版**在 macOS 上通过本地 SOCKS5 代理稳定工作：不依赖启动脚本、
+让 **Codex / ChatGPT 桌面版**通过代理稳定工作：不依赖启动脚本、
 不用给每个 App 单独加 `--proxy-server` 或环境变量，由 Proxifier 在网络层按**域名**分流。
 
-本仓库包含两部分：
+仓库分平台两套：
 
-| 文件 | 说明 |
-|---|---|
-| [`codex-macos-proxifier-guide.md`](codex-macos-proxifier-guide.md) | 配置与排错指南：原理、规则、验证、常见坑、回退 |
-| [`codex-net-doctor.sh`](codex-net-doctor.sh) | 只读自检脚本：Codex 升级或连不上时，判断当前配置是否仍适用 |
+| 平台 | 指南 | 自检 | 一键配置 |
+|---|---|---|---|
+| macOS（Proxifier 3.15） | [`codex-macos-proxifier-guide.md`](codex-macos-proxifier-guide.md) | [`codex-net-doctor.sh`](codex-net-doctor.sh) | 手改 profile（见指南） |
+| Windows（Proxifier 4.x） | [`codex-windows-proxifier-guide.md`](codex-windows-proxifier-guide.md) | [`codex-net-doctor.ps1`](codex-net-doctor.ps1) | [`codex-apply-proxifier.ps1`](codex-apply-proxifier.ps1) |
+
+两个平台解决的问题一样：**DNS 污染下按域名分流**——域名交给代理解析，规则外的流量保持直连。
+配置文件格式、路径和验证命令不同，务必看对应平台的指南。
 
 ## 适用场景
 
-- macOS，已有一个可用的**本地 SOCKS5 代理**（例如 `127.0.0.1:1234`，客户端不限：mihomo / sing-box / v2ray 等）；
+- 已有一个可用的代理（本地 SOCKS5，例如 `127.0.0.1:7890`；或局域网里的混合端口），出口在境外；
 - Codex / ChatGPT 直接启动连不上（DNS 污染、域名未覆盖、QUIC 卡住等）；
 - 希望按域名分流，而不是全局代理或给每个 App 写启动脚本。
 
-## 快速开始
+## 快速开始（Windows）
+
+```powershell
+# 1) 退出 Proxifier，然后生成并启用配置（端口换成你的）
+./codex-apply-proxifier.ps1 -ProxyAddress 127.0.0.1 -ProxyPort 7890
+
+# 2) 刷 DNS
+ipconfig /flushdns
+
+# 3) 自检
+./codex-net-doctor.ps1
+```
+
+首次运行如提示"禁止运行脚本"：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\codex-apply-proxifier.ps1 -ProxyPort 7890
+powershell -ExecutionPolicy Bypass -File .\codex-net-doctor.ps1
+```
+
+脚本会：备份旧 profile → 继承你已有的自定义规则 → 写入 `%APPDATA%\Proxifier4\Profiles\Codex.ppx`
+（DNS 走代理、OpenAI 域名走 SOCKS5、屏蔽 QUIC、其余直连）→ 设为活动 profile 并启动 Proxifier。
+
+## 快速开始（macOS）
 
 1. 按 [指南](codex-macos-proxifier-guide.md) 配置 Proxifier：
    - 代理：SOCKS5 `127.0.0.1:1234`（换成你自己的端口）；
@@ -30,9 +56,9 @@ chmod +x codex-net-doctor.sh
 ./codex-net-doctor.sh
 ```
 
-3. 按输出里的「建议」逐条处理；全部通过后再启动 Codex。
-
 ## 自检脚本
+
+macOS：
 
 ```sh
 ./codex-net-doctor.sh                # 完整检查（默认脱敏）
@@ -41,26 +67,37 @@ chmod +x codex-net-doctor.sh
 ./codex-net-doctor.sh --profile x.ppx # 检查导出的 profile（导入前预检）
 ```
 
+Windows：
+
+```powershell
+./codex-net-doctor.ps1                # 完整检查（默认脱敏）
+./codex-net-doctor.ps1 -Quiet         # 只输出失败/警告
+./codex-net-doctor.ps1 -NoRedact      # 显示完整 IP / profile 名（仅本地排查用）
+./codex-net-doctor.ps1 -Profile x.ppx # 检查导出的 profile（导入前预检）
+```
+
 退出码：`0` 全部通过、`1` 有失败项、`2` 只有警告。
 
 **输出默认脱敏**：代理出口 IP、本机解析到的真实 IP、当前 profile 名都会显示为
-`<redacted>`，但保留 `loc=US`、`fake-IP`、HTTP 状态码这些判断信息。直接贴 issue
-不会泄露你的出口或所在地；需要完整值时才加 `--no-redact`。
+`<redacted>`，但保留 `loc=US`、fake-IP、HTTP 状态码这些判断信息。直接贴 issue
+不会泄露你的出口或所在地；需要完整值时才加 `-NoRedact` / `--no-redact`。
 
-脚本只读，不改配置、不重启进程；唯一写入是 `~/.cache/codex-net-doctor/last-good-version`
-（记录最后一次全部通过的 App 版本，用于升级后对比）。
+脚本只读，不改配置、不重启进程；唯一写入是"最后一次全部通过"的版本记录
+（macOS `~/.cache/codex-net-doctor/`，Windows `%LOCALAPPDATA%\codex-net-doctor\`）。
 
 ## 依赖
 
-- macOS（在 macOS 26 + Proxifier 3.15 上验证）；
-- [Proxifier](https://www.proxifier.com/)（商业软件，需自行购买）；
-- `bash`、`curl`、`host`、`lsof`、`nc`、`plutil`、`python3`（macOS 自带或随 Xcode CLT 提供）。
+- **Windows**：Windows 10/11、PowerShell 5.1+、`curl.exe`（系统自带）、Proxifier 4.x；
+- **macOS**：macOS（在 macOS 26 + Proxifier 3.15 上验证）、`bash`、`curl`、`host`、`lsof`、
+  `nc`、`plutil`、`python3`；
+- [Proxifier](https://www.proxifier.com/)（商业软件，需自行购买）。
 
 ## 安全与隐私
 
-- **不要**把真实的 Proxifier `.ppx` 导出文件提交到仓库或公开——里面包含代理服务器地址、端口，可能还有密码；
+- **不要**把真实的 Proxifier `.ppx` 导出文件提交到仓库或公开——里面包含代理服务器地址、端口，
+  可能还有密码；
 - 分享脚本输出时用默认模式（已脱敏）；截图前也检查一下是否带出了 IP；
-- 文档中的端口 `1234`、进程名 `mihomo` 均为示例，请替换为自己的配置。
+- 文档中的端口 `7890`/`1234`、进程名 `mihomo` 均为示例，请替换为自己的配置。
 
 ## 免责声明
 
